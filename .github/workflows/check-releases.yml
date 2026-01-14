@@ -93,4 +93,4 @@ jobs:
         run: |
           curl -H "Content-Type: application/json" \
             -d "{\"content\": \"${DISCORD_MESSAGE}\"}" \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+            "https://discord.com/api/webhooks/1460797206918594645/EjWk267W8lwvpQfngr9lBYxjSxL5cmIz5Se-ywXDefg5m8vF8F5dlmC1O77_kiWNcn7m"
