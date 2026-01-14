@@ -91,6 +91,9 @@ jobs:
       - name: Notify Discord
         if: steps.check.outputs.updated == 'true'
         run: |
+          # メッセージを安全にJSONに変換
+          JSON_PAYLOAD=$(jq -n --arg content "$DISCORD_MESSAGE" '{content: $content}')
+          
           curl -H "Content-Type: application/json" \
-            -d "{\"content\": \"${DISCORD_MESSAGE}\"}" \
+            -d "$JSON_PAYLOAD" \
             "https://discord.com/api/webhooks/1460797206918594645/EjWk267W8lwvpQfngr9lBYxjSxL5cmIz5Se-ywXDefg5m8vF8F5dlmC1O77_kiWNcn7m"
