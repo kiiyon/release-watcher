@@ -1,0 +1,96 @@
+name: AI Tools Release Watcher
+
+on:
+  schedule:
+    # 6時間ごとにチェック (日本時間 3:00, 9:00, 15:00, 21:00 ごろ)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # 手動実行ボタンを表示
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check for Updates
+        id: check
+        run: |
+          # 保存されているバージョンを読み込み
+          if [ -f versions.json ]; then
+            OLD_CLAUDE=$(jq -r '.claude_code' versions.json)
+            OLD_ANTI=$(jq -r '.antigravity' versions.json)
+          else
+            OLD_CLAUDE="v0.0.0"
+            OLD_ANTI="v0.0.0"
+          fi
+
+          echo "Current stored versions: Claude=$OLD_CLAUDE, Antigravity=$OLD_ANTI"
+
+          # 1. Claude Code の最新取得 (npm)
+          # GitHub Releasesよりnpmの方が確実な場合があるためnpmを参照
+          NEW_CLAUDE_VER=$(npm view @anthropic-ai/claude-code version)
+          NEW_CLAUDE="v$NEW_CLAUDE_VER"
+
+          # 2. Antigravity の最新取得 (GitHub)
+          # Google DeepMindのリポジトリを仮定。存在しない場合はスキップ
+          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" https://api.github.com/repos/google-deepmind/antigravity/releases/latest)
+          if [ "$HTTP_CODE" == "200" ]; then
+            NEW_ANTI=$(curl -s https://api.github.com/repos/google-deepmind/antigravity/releases/latest | jq -r '.tag_name')
+          else
+            NEW_ANTI="$OLD_ANTI" # 見つからない場合は更新なしとする
+          fi
+
+          echo "Latest versions found: Claude=$NEW_CLAUDE, Antigravity=$NEW_ANTI"
+
+          # 更新判定とメッセージ作成
+          MESSAGE=""
+          UPDATED="false"
+
+          if [ "$NEW_CLAUDE" != "$OLD_CLAUDE" ] && [ "$NEW_CLAUDE" != "v" ]; then
+            MESSAGE="${MESSAGE}🚀 **Claude Code Updated!**\n\`$OLD_CLAUDE\` -> \`$NEW_CLAUDE\`\nCheck: https://www.npmjs.com/package/@anthropic-ai/claude-code\n\n"
+            UPDATED="true"
+            # JSON更新
+            tmp=$(mktemp)
+            jq --arg v "$NEW_CLAUDE" '.claude_code = $v' versions.json > "$tmp" && mv "$tmp" versions.json
+          fi
+
+          if [ "$NEW_ANTI" != "$OLD_ANTI" ] && [ "$NEW_ANTI" != "" ]; then
+            MESSAGE="${MESSAGE}🌌 **Antigravity Updated!**\n\`$OLD_ANTI\` -> \`$NEW_ANTI\`\nCheck: https://github.com/google-deepmind/antigravity\n\n"
+            UPDATED="true"
+             # JSON更新
+            tmp=$(mktemp)
+            jq --arg v "$NEW_ANTI" '.antigravity = $v' versions.json > "$tmp" && mv "$tmp" versions.json
+          fi
+
+          echo "updated=$UPDATED" >> $GITHUB_OUTPUT
+          
+          # Discord用に改行コードをエスケープして環境変数に入れる
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "DISCORD_MESSAGE<<$EOF" >> $GITHUB_ENV
+          echo -e "$MESSAGE" >> $GITHUB_ENV
+          echo "$EOF" >> $GITHUB_ENV
+
+      - name: Commit and Push changes
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Release Watcher Bot"
+          git add versions.json
+          git commit -m "Update versions.json"
+          git push
+
+      - name: Notify Discord
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d "{\"content\": \"${DISCORD_MESSAGE}\"}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
