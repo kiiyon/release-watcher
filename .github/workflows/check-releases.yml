@@ -2,8 +2,8 @@ name: AI Tools Release Watcher
 
 on:
   schedule:
-    # 6時間ごとにチェック (日本時間 3:00, 9:00, 15:00, 21:00 ごろ)
-    - cron: '0 */6 * * *'
+    # 12時間ごとにチェック (日本時間 9:00, 21:00 ごろ)
+    - cron: '0 */12 * * *'
   workflow_dispatch: # 手動実行ボタンを表示
 
 permissions:
